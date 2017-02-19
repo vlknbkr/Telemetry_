@@ -1,0 +1,227 @@
+/*
+*Written by Volkan Bakar
+*That code block reads ADC from chanel ADC1 and ports PA.00
+*PA.09 is using as USART's tx and PA.10 is using as USART's RX 
+*
+*/
+
+#include "stm32f30x.h"                  // Device header
+#include <stdio.h>
+#include <stdlib.h> 
+
+/* Variable Define */
+uint16_t ADC_Data;
+char str[50];
+uint32_t i;
+/* Variable Define */
+
+/* Structure Define */
+
+ADC_InitTypeDef ADC_InitStructure;
+ADC_CommonInitTypeDef ADC_CommonInitStructure;
+GPIO_InitTypeDef GPIO_InitStructure;
+TIM_TimeBaseInitTypeDef TIM_TimeBaseStructure;
+NVIC_InitTypeDef NVIC_InitStructure;
+USART_InitTypeDef USART_InitStructure;
+
+/* Structure Define */
+
+/*   Private function prototypes   */
+
+static void RCC_config(void);
+static void GPIO_Config(void);
+static void TIM_Config(void);
+static void NVIC_Config(void);
+static void USART_Config(void);
+static void ADC_Config(void);
+static void Warning_Leds(void);
+/*   Private function prototypes   */
+
+void Warning_Leds(void){// output ports 
+	if(ADC_Data >168){
+	GPIO_SetBits(GPIOE, GPIO_Pin_8	| GPIO_Pin_9	| GPIO_Pin_10	|	GPIO_Pin_13 
+																	| GPIO_Pin_11 | GPIO_Pin_12 | GPIO_Pin_14
+																	| GPIO_Pin_15);
+	}
+	else
+	GPIO_ResetBits(GPIOE, GPIO_Pin_8	| GPIO_Pin_9	| GPIO_Pin_10	|	GPIO_Pin_13 
+																		| GPIO_Pin_11 | GPIO_Pin_12 | GPIO_Pin_14
+																		| GPIO_Pin_15);
+	
+}
+/* Send data from USART */
+void USART_Puts(USART_TypeDef* USARTx, volatile char *s) {
+	while (*s) {
+		while (USART_GetFlagStatus(USARTx, USART_FLAG_TXE) == RESET)
+			;
+		USART_SendData(USARTx, *s);
+		*s++;
+	}
+}
+/* Read data from ADC*/
+uint16_t Read_ADC(void){
+	ADC_RegularChannelConfig(ADC1, ADC_Channel_1, 1, ADC_SampleTime_61Cycles5);
+	ADC_StartConversion(ADC1);
+	while (ADC_GetFlagStatus(ADC1, ADC_FLAG_EOC) == RESET);
+	return ADC_GetConversionValue(ADC1);
+}
+/* Configuration of GPIO ports */
+static void GPIO_Config(void) {
+	/* Connect PA9 to USART1_Tx */
+	GPIO_PinAFConfig(GPIOA, GPIO_PinSource9, GPIO_AF_7);
+
+	/* Connect PA10 to USART1_Rx */
+	GPIO_PinAFConfig(GPIOA, GPIO_PinSource10, GPIO_AF_7);
+
+	/* Configure USART Tx as alternate function push-pull */
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_9 | GPIO_Pin_10;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_8	| GPIO_Pin_9	| GPIO_Pin_10	|	GPIO_Pin_13 
+																						| GPIO_Pin_11 | GPIO_Pin_12 | GPIO_Pin_14
+																						| GPIO_Pin_15;
+	GPIO_ResetBits(GPIOE, GPIO_Pin_8	| GPIO_Pin_9	| GPIO_Pin_10	|	GPIO_Pin_13 
+																						| GPIO_Pin_11 | GPIO_Pin_12 | GPIO_Pin_14
+																						| GPIO_Pin_15);
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
+	GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
+	GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+	GPIO_Init(GPIOE, &GPIO_InitStructure);
+	
+	
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_1;
+	GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AN;
+	GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
+	GPIO_Init(GPIOA, &GPIO_InitStructure);
+}
+static void USART_Config(void) {
+
+	/* USART resources configuration (Clock, GPIO pins and USART registers) ----*/
+	/* USART configured as follow:
+	 - BaudRate = 115200 baud
+	 - Word Length = 8 Bits
+	 - One Stop Bit
+	 - No parity
+	 - Hardware flow control disabled (RTS and CTS signals)
+	 - Receive and transmit enabled
+	 */
+	USART_InitStructure.USART_BaudRate = 9600;
+	USART_InitStructure.USART_WordLength = USART_WordLength_8b;
+	USART_InitStructure.USART_StopBits = USART_StopBits_1;
+	USART_InitStructure.USART_Parity = USART_Parity_No;
+	USART_InitStructure.USART_HardwareFlowControl =
+			USART_HardwareFlowControl_None;
+	USART_InitStructure.USART_Mode = USART_Mode_Rx | USART_Mode_Tx;
+
+	/* USART configuration */
+	USART_Init(USART1, &USART_InitStructure);
+
+	/* Enable USART */
+	USART_Cmd(USART1, ENABLE);
+
+}
+
+static void ADC_Config(void) {
+	/* Config*/
+	ADC_CommonInitStructure.ADC_Mode							= ADC_Mode_Independent;//Type of ADC
+	ADC_CommonInitStructure.ADC_Clock 						= ADC_Clock_AsynClkMode;
+	ADC_CommonInitStructure.ADC_DMAAccessMode			= ADC_DMAAccessMode_Disabled;
+	ADC_CommonInitStructure.ADC_DMAMode						= ADC_DMAMode_Circular;
+	ADC_CommonInitStructure.ADC_TwoSamplingDelay 	= 0;
+	
+	ADC_CommonInit(ADC1, &ADC_CommonInitStructure);
+
+	ADC_InitStructure.ADC_ContinuousConvMode					= ADC_ContinuousConvMode_Disable;
+	ADC_InitStructure.ADC_Resolution 									= ADC_Resolution_8b;
+	ADC_InitStructure.ADC_ExternalTrigConvEvent 			= ADC_ExternalTrigConvEvent_0;
+	ADC_InitStructure.ADC_ExternalTrigEventEdge 			=	ADC_ExternalTrigEventEdge_None;
+	ADC_InitStructure.ADC_DataAlign 									= ADC_DataAlign_Right;
+	ADC_InitStructure.ADC_OverrunMode 								= ADC_OverrunMode_Disable;
+	ADC_InitStructure.ADC_AutoInjMode 								= ADC_AutoInjec_Disable;
+	ADC_InitStructure.ADC_NbrOfRegChannel 						= 3;
+	ADC_Init(ADC1, &ADC_InitStructure);
+
+	ADC_Cmd(ADC1, ENABLE);
+}
+static void RCC_config(void) {
+	RCC_ADCCLKConfig(RCC_ADC12PLLCLK_Div2);
+
+	/* Enable GPIOA clock */
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOA, ENABLE);
+
+	/* Enable GPIOE clock */
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_GPIOE, ENABLE);
+
+	/* Enable USART clock */
+	RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART1, ENABLE);
+
+	/* Enable ADC clock */
+	RCC_AHBPeriphClockCmd(RCC_AHBPeriph_ADC12, ENABLE);
+
+	/* Enable TIM clock */
+	RCC_APB1PeriphClockCmd(RCC_APB1Periph_TIM2, ENABLE);
+
+}
+
+static void TIM_Config(void) {
+	/*............*
+	* (Period*Prescaler)/Clock Palse Freq. 
+	* gives a time delay of TIM port.
+	* TIM2 is 32 bit Timer...
+	*............*/
+	TIM_TimeBaseStructure.TIM_Period 				= 9600;  // 1 MHz down to 1 KHz (1 ms)
+  TIM_TimeBaseStructure.TIM_Prescaler 		= 2000; 	// 24 MHz Clock down to 1 MHz (adjust per your clock)
+  TIM_TimeBaseStructure.TIM_ClockDivision = 0;
+  TIM_TimeBaseStructure.TIM_CounterMode 	= TIM_CounterMode_Up;// TIM count up
+
+  TIM_TimeBaseInit(TIM2, &TIM_TimeBaseStructure);
+  TIM_ITConfig(TIM2, TIM_IT_Update, ENABLE);
+  TIM_Cmd(TIM2, ENABLE);
+}
+static void NVIC_Config(void) {
+
+	NVIC_InitStructure.NVIC_IRQChannel										= TIM2_IRQn;
+	NVIC_InitStructure.NVIC_IRQChannelPreemptionPriority	= 0x00;
+	NVIC_InitStructure.NVIC_IRQChannelSubPriority					= 0x01;
+	NVIC_InitStructure.NVIC_IRQChannelCmd									= ENABLE;
+	NVIC_Init(&NVIC_InitStructure);
+
+}
+
+void TIM2_IRQHandler() {
+	if (TIM_GetFlagStatus(TIM2, TIM_IT_Update) == SET)// check the flag statu 
+	{
+		TIM_ClearITPendingBit(TIM2, TIM_IT_Update); // flag sifirlaniyor
+
+		//USER CODE
+				GPIO_SetBits(GPIOE, GPIO_Pin_8);			
+				USART_Puts(USART1, str);
+				Warning_Leds();
+		//USER CODE
+
+	}
+}
+
+int main() {
+	RCC_config();		// call RCC configuration
+	TIM_Config();		// call TIM configuration
+	NVIC_Config();	// call NVIC configuration
+	GPIO_Config();	// call GPIO configuration
+	ADC_Config();		// call ADC configuration
+	USART_Config();	// call USART configuration
+
+	while (1)
+	{
+			ADC_Data = Read_ADC(); // assign the ADC data
+			sprintf(str, "%d \n", ADC_Data); // send ADC data to String
+		//GPIO_SetBits(GPIOE, GPIO_Pin_9);
+	}
+		
+
+	
+
+}
